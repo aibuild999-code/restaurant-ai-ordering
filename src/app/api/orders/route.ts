@@ -25,7 +25,17 @@ export async function GET() {
     return NextResponse.json({ error: data }, { status: response.status });
   }
 
-  return NextResponse.json(data);
+  const normalized = data.map((order: { order_items?: Array<{ id: string; item_name: string; quantity: number; line_total_cents: number }> }) => ({
+    ...order,
+    order_items: (order.order_items || []).map((item) => ({
+      id: item.id,
+      name: item.item_name,
+      quantity: item.quantity,
+      line_total_cents: item.line_total_cents,
+    })),
+  }));
+
+  return NextResponse.json(normalized);
 }
 
 export async function PATCH(request: NextRequest) {
