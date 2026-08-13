@@ -178,7 +178,7 @@ export default function Home() {
 
   function OrderCard({ order }: { order: Order }) {
     return (
-      <article className="rounded-2xl bg-white p-5 shadow-lg shadow-slate-200/50 ring-1 ring-slate-200">
+      <article className="rounded-2xl bg-white/95 p-5 shadow-xl shadow-blue-200/40 ring-1 ring-blue-100">
         <div className="flex items-start justify-between gap-4 border-b pb-4">
           <div>
             <p className="text-sm font-semibold text-slate-500">
@@ -244,8 +244,8 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 text-slate-950">
-      <header className="border-b border-white/70 bg-white/80 shadow-sm backdrop-blur-xl">
+    <main className="min-h-screen bg-gradient-to-br from-blue-100 via-indigo-50 to-slate-100 text-slate-950">
+      <header className="border-b border-blue-200/60 bg-white/90 shadow-sm backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-8">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
