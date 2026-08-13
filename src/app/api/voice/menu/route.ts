@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { isVoiceAgentAuthorized, RESTAURANT_ID } from "@/lib/voice-auth";
+import { NextResponse } from "next/server";
+import { RESTAURANT_ID } from "@/lib/voice-auth";
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -12,11 +12,7 @@ function headers() {
   };
 }
 
-export async function GET(request: NextRequest) {
-  if (!isVoiceAgentAuthorized(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export async function GET() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json({ error: "Supabase environment variables are not configured." }, { status: 500 });
   }
