@@ -48,11 +48,12 @@ export async function POST(request: NextRequest) {
   if (!body) return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
 
   const customerName = String(body.customer_name || "").trim();
-  const customerPhone = body.customer_phone ? String(body.customer_phone).trim() : null;
+  const customerPhone = body.customer_phone ? String(body.customer_phone).trim() : "";
   const notes = body.notes ? String(body.notes).trim() : null;
   const items = Array.isArray(body.items) ? body.items : [];
 
   if (!customerName) return NextResponse.json({ error: "customer_name is required." }, { status: 400 });
+  if (!customerPhone) return NextResponse.json({ error: "customer_phone is required." }, { status: 400 });
   if (!items.length) return NextResponse.json({ error: "At least one item is required." }, { status: 400 });
   if (items.length > 20) return NextResponse.json({ error: "Too many order lines." }, { status: 400 });
 
@@ -161,7 +162,7 @@ export async function POST(request: NextRequest) {
   });
   const createdOrderItems = await orderItemResponse.json() as Array<{ id: string }>;
 
-  if (!orderItemResponse.ok) {
+  if (!orderItemResponse.ok || createdOrderItems.length !== calculatedItems.length) {
     await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${encodeURIComponent(order.id)}`, {
       method: "DELETE",
       headers: headers(),
@@ -191,11 +192,23 @@ export async function POST(request: NextRequest) {
   if (modifierRows.length) {
     const modifierResponse = await fetch(`${SUPABASE_URL}/rest/v1/order_item_modifiers`, {
       method: "POST",
-      headers: headers(),
+      headers: headers("return=representation"),
       body: JSON.stringify(modifierRows),
     });
     if (!modifierResponse.ok) {
-      return NextResponse.json({ error: await modifierResponse.json() }, { status: modifierResponse.status });
+      const modifierError = await modifierResponse.json();
+
+      await fetch(`${SUPABASE_URL}/rest/v1/order_items?order_id=eq.${encodeURIComponent(order.id)}`, {
+        method: "DELETE",
+        headers: headers(),
+      });
+
+      await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${encodeURIComponent(order.id)}`, {
+        method: "DELETE",
+        headers: headers(),
+      });
+
+      return NextResponse.json({ error: modifierError }, { status: modifierResponse.status });
     }
   }
 
@@ -204,6 +217,7 @@ export async function POST(request: NextRequest) {
     order_number: order.order_number,
     order_id: order.id,
     customer_name: customerName,
+    customer_phone: customerPhone,
     total_cents: totalCents,
     pickup_time: pickupTime,
     items: calculatedItems.map((item: any) => ({
