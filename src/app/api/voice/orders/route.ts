@@ -4,6 +4,18 @@ import { isVoiceAgentAuthorized, RESTAURANT_ID } from "@/lib/voice-auth";
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
+type MenuItem = {
+  id: string;
+  name: string;
+  price_cents: number;
+};
+
+type Modifier = {
+  id: string;
+  name: string;
+  price_delta_cents: number;
+};
+
 function headers(prefer?: string) {
   return {
     apikey: SUPABASE_SERVICE_ROLE_KEY,
@@ -17,7 +29,7 @@ async function supabase(path: string, init?: RequestInit) {
   return fetch(`${SUPABASE_URL}${path}`, {
     ...init,
     headers: {
-      ...headers(init?.headers ? undefined : undefined),
+      ...headers(),
       ...(init?.headers || {}),
     },
   });
@@ -55,31 +67,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Each item needs a valid menu_item_id and quantity." }, { status: 400 });
   }
 
-  const uniqueMenuIds = [...new Set(normalizedItems.map((item: any) => item.menu_item_id))];
-  const menuFilter = uniqueMenuIds.map(encodeURIComponent).join(",");
+  const uniqueMenuIds: string[] = [...new Set<string>(normalizedItems.map((item: any) => item.menu_item_id))];
+  const menuFilter = uniqueMenuIds.map((id: string) => encodeURIComponent(id)).join(",");
   const menuResponse = await fetch(
     `${SUPABASE_URL}/rest/v1/menu_items?restaurant_id=eq.${RESTAURANT_ID}&is_available=eq.true&id=in.(${menuFilter})&select=id,name,price_cents`,
     { headers: headers() },
   );
-  const menuItems = await menuResponse.json();
+  const menuItems: MenuItem[] = (await menuResponse.json()) as MenuItem[];
   if (!menuResponse.ok) return NextResponse.json({ error: menuItems }, { status: menuResponse.status });
 
-  const menuMap = new Map(menuItems.map((item: any) => [item.id, item]));
+  const menuMap = new Map<string, MenuItem>(menuItems.map((item: MenuItem) => [item.id, item]));
   if (menuMap.size !== uniqueMenuIds.length) {
     return NextResponse.json({ error: "One or more requested menu items are unavailable or do not exist." }, { status: 400 });
   }
 
-  const modifierIds = [...new Set(normalizedItems.flatMap((item: any) => item.modifier_ids))];
-  let modifierMap = new Map<string, any>();
+  const modifierIds: string[] = [...new Set<string>(normalizedItems.flatMap((item: any) => item.modifier_ids as string[]))];
+  let modifierMap = new Map<string, Modifier>();
   if (modifierIds.length) {
-    const modifierFilter = modifierIds.map(encodeURIComponent).join(",");
+    const modifierFilter = modifierIds.map((id: string) => encodeURIComponent(id)).join(",");
     const modifierResponse = await fetch(
       `${SUPABASE_URL}/rest/v1/modifiers?restaurant_id=eq.${RESTAURANT_ID}&is_available=eq.true&id=in.(${modifierFilter})&select=id,name,price_delta_cents`,
       { headers: headers() },
     );
-    const modifiers = await modifierResponse.json();
+    const modifiers: Modifier[] = (await modifierResponse.json()) as Modifier[];
     if (!modifierResponse.ok) return NextResponse.json({ error: modifiers }, { status: modifierResponse.status });
-    modifierMap = new Map(modifiers.map((modifier: any) => [modifier.id, modifier]));
+    modifierMap = new Map<string, Modifier>(modifiers.map((modifier: Modifier) => [modifier.id, modifier]));
     if (modifierMap.size !== modifierIds.length) {
       return NextResponse.json({ error: "One or more requested modifiers are unavailable or do not exist." }, { status: 400 });
     }
@@ -87,8 +99,15 @@ export async function POST(request: NextRequest) {
 
   const calculatedItems = normalizedItems.map((item: any) => {
     const menu = menuMap.get(item.menu_item_id);
-    const modifiers = item.modifier_ids.map((id: string) => modifierMap.get(id));
-    const unitPrice = menu.price_cents + modifiers.reduce((sum: number, modifier: any) => sum + modifier.price_delta_cents, 0);
+    if (!menu) throw new Error("Menu item validation failed.");
+
+    const modifiers: Modifier[] = item.modifier_ids.map((id: string) => {
+      const modifier = modifierMap.get(id);
+      if (!modifier) throw new Error("Modifier validation failed.");
+      return modifier;
+    });
+
+    const unitPrice = menu.price_cents + modifiers.reduce((sum: number, modifier: Modifier) => sum + modifier.price_delta_cents, 0);
     return {
       ...item,
       item_name: menu.name,
@@ -104,7 +123,7 @@ export async function POST(request: NextRequest) {
     `${SUPABASE_URL}/rest/v1/restaurants?id=eq.${RESTAURANT_ID}&select=pickup_minutes`,
     { headers: headers() },
   );
-  const restaurants = await restaurantResponse.json();
+  const restaurants = await restaurantResponse.json() as Array<{ pickup_minutes?: number }>;
   const pickupMinutes = Number(restaurants?.[0]?.pickup_minutes ?? 20);
   const pickupTime = new Date(Date.now() + pickupMinutes * 60_000).toISOString();
 
@@ -123,7 +142,7 @@ export async function POST(request: NextRequest) {
       notes,
     }),
   });
-  const orders = await orderResponse.json();
+  const orders = await orderResponse.json() as Array<{ id: string; order_number: number }>;
   if (!orderResponse.ok || !orders?.[0]) return NextResponse.json({ error: orders }, { status: orderResponse.status || 500 });
 
   const order = orders[0];
@@ -140,7 +159,7 @@ export async function POST(request: NextRequest) {
       notes: item.notes,
     }))),
   });
-  const createdOrderItems = await orderItemResponse.json();
+  const createdOrderItems = await orderItemResponse.json() as Array<{ id: string }>;
 
   if (!orderItemResponse.ok) {
     await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${encodeURIComponent(order.id)}`, {
@@ -150,10 +169,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: createdOrderItems }, { status: orderItemResponse.status });
   }
 
-  const modifierRows: any[] = [];
+  const modifierRows: Array<{
+    order_item_id: string;
+    modifier_id: string;
+    modifier_name: string;
+    price_delta_cents: number;
+  }> = [];
+
   calculatedItems.forEach((item: any, index: number) => {
     const created = createdOrderItems[index];
-    item.modifiers.forEach((modifier: any) => {
+    item.modifiers.forEach((modifier: Modifier) => {
       modifierRows.push({
         order_item_id: created.id,
         modifier_id: modifier.id,
@@ -185,7 +210,7 @@ export async function POST(request: NextRequest) {
       name: item.item_name,
       quantity: item.quantity,
       line_total_cents: item.line_total_cents,
-      modifiers: item.modifiers.map((modifier: any) => modifier.name),
+      modifiers: item.modifiers.map((modifier: Modifier) => modifier.name),
     })),
   }, { status: 201 });
 }
