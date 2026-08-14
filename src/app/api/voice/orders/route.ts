@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
   );
   const restaurants = await restaurantResponse.json() as Array<{ pickup_minutes?: number }>;
   const pickupMinutes = Number(restaurants?.[0]?.pickup_minutes ?? 20);
-  const pickupTime = new Intl.DateTimeFormat("en-US", {   timeZone: "America/Toronto",   dateStyle: "short",   timeStyle: "short", }).format(new Date(Date.now() + pickupMinutes * 60_000));
+  const pickupTime = new Date(Date.now() + pickupMinutes * 60_000).toISOString();
 
   const orderResponse = await fetch(`${SUPABASE_URL}/rest/v1/orders`, {
     method: "POST",
