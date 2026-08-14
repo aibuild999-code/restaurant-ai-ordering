@@ -26,7 +26,8 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    restaurant_id: RESTAURANT_ID,
-    items: data,
-  });
+  restaurant_id: RESTAURANT_ID,
+  items: data,
+  menu_url: `${process.env.NEXT_PUBLIC_APP_URL}/menu`,
+});
 }
